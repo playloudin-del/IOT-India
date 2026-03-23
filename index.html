@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IOT India — Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --bg: #080c14;
+  --surface: #0f1824;
+  --surface2: #162032;
+  --border: rgba(0, 212, 255, 0.12);
+  --border-hover: rgba(0, 212, 255, 0.4);
+  --cyan: #00d4ff;
+  --green: #00ff88;
+  --red: #ff4455;
+  --yellow: #ffaa00;
+  --text: #c8d8e8;
+  --text-dim: #6a7f96;
+  --text-bright: #ffffff;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+  --radius: 14px;
+  --shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===== LOGIN ===== */
+#login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.login-glow {
+  position: fixed;
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(0,212,255,0.06) 0%, transparent 65%);
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  pointer-events: none;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 48px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow), 0 0 80px rgba(0,212,255,0.04);
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+.login-logo-icon {
+  width: 42px; height: 42px;
+  background: var(--cyan);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.login-logo-text {
+  font-size: 22px; font-weight: 800;
+  color: var(--text-bright); letter-spacing: -0.5px;
+}
+.login-logo-text span { color: var(--cyan); }
+
+.login-title { font-size: 28px; font-weight: 800; color: var(--text-bright); margin-bottom: 6px; }
+.login-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 30px; font-family: var(--mono); }
+
+.form-group { margin-bottom: 16px; }
+
+.form-label {
+  display: block; font-size: 11px; font-weight: 600;
+  color: var(--text-dim); margin-bottom: 8px;
+  font-family: var(--mono); letter-spacing: 0.8px; text-transform: uppercase;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--cyan); }
+.form-input::placeholder { color: var(--text-dim); }
+
+.btn {
+  width: 100%; padding: 13px;
+  border-radius: 8px; font-family: var(--sans);
+  font-size: 15px; font-weight: 700;
+  cursor: pointer; border: none;
+  transition: all 0.2s; letter-spacing: 0.3px;
+}
+
+.btn-primary { background: var(--cyan); color: #000; }
+.btn-primary:hover { background: #33ddff; transform: translateY(-1px); }
+
+.btn-google {
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 12px;
+}
+.btn-google:hover { border-color: var(--border-hover); }
+
+.login-divider {
+  text-align: center; color: var(--text-dim);
+  font-size: 12px; margin: 16px 0;
+  font-family: var(--mono); position: relative;
+}
+.login-divider::before, .login-divider::after {
+  content: ''; position: absolute; top: 50%;
+  width: 42%; height: 1px; background: var(--border);
+}
+.login-divider::before { left: 0; }
+.login-divider::after { right: 0; }
+
+.login-toggle {
+  text-align: center; margin-top: 20px;
+  font-size: 13px; color: var(--text-dim); font-family: var(--mono);
+}
+.login-toggle a { color: var(--cyan); cursor: pointer; text-decoration: none; }
+
+.login-error {
+  background: rgba(255,68,85,0.08);
+  border: 1px solid rgba(255,68,85,0.25);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; color: var(--red);
+  margin-bottom: 16px; font-family: var(--mono); display: none;
+}
+
+/* ===== DASHBOARD ===== */
+#dashboard-page { display: none; position: relative; z-index: 1; }
+
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 62px;
+  background: rgba(8,12,20,0.96);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  display: flex; align-items: center;
+  padding: 0 24px; gap: 12px; z-index: 100;
+}
+
+.topbar-logo {
+  font-size: 17px; font-weight: 800; color: var(--text-bright);
+  display: flex; align-items: center; gap: 8px; letter-spacing: -0.5px;
+}
+.topbar-logo span { color: var(--cyan); }
+.topbar-logo-icon {
+  width: 30px; height: 30px; background: var(--cyan);
+  border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+
+.topbar-spacer { flex: 1; }
+
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 12px;
+  font-size: 11px; font-family: var(--mono); color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim);
+}
+.status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+.status-dot.offline { background: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.topbar-user {
+  font-size: 12px; font-family: var(--mono); color: var(--text-dim);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.btn-sm {
+  padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 700;
+  cursor: pointer; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  font-family: var(--sans); transition: all 0.2s; white-space: nowrap;
+}
+.btn-sm:hover { border-color: var(--border-hover); color: var(--text); }
+.btn-add { background: var(--cyan); color: #000 !important; border-color: var(--cyan); }
+.btn-add:hover { background: #33ddff; }
+
+/* Grid */
+.dashboard-grid {
+  margin-top: 62px; padding: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 16px;
+  min-height: calc(100vh - 62px);
+  align-content: start;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 420px; gap: 12px; color: var(--text-dim);
+}
+.empty-icon { font-size: 52px; opacity: 0.2; }
+.empty-text { font-size: 18px; font-weight: 700; opacity: 0.4; }
+.empty-sub { font-size: 12px; font-family: var(--mono); opacity: 0.3; }
+
+/* Widget Cards */
+.widget-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: relative;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  animation: fadeUp 0.3s ease;
+}
+.widget-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 24px rgba(0,212,255,0.06);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.widget-header {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px;
+}
+
+.widget-icon {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0;
+}
+.widget-icon.sensor  { background: rgba(0,212,255,0.1); }
+.widget-icon.control { background: rgba(0,255,136,0.1); }
+.widget-icon.chart   { background: rgba(255,170,0,0.1); }
+
+.widget-meta { flex: 1; min-width: 0; }
+.widget-title { font-size: 13px; font-weight: 700; color: var(--text-bright); }
+.widget-topic { font-size: 10px; font-family: var(--mono); color: var(--text-dim); margin-top: 2px; word-break: break-all; }
+
+.widget-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; flex-shrink: 0; }
+.widget-card:hover .widget-actions { opacity: 1; }
+
+.widget-btn {
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.widget-btn:hover { border-color: var(--red); color: var(--red); background: rgba(255,68,85,0.08); }
+
+/* Sensor Widget */
+.sensor-value {
+  font-family: var(--mono); font-size: 52px; font-weight: 300;
+  color: var(--cyan); line-height: 1; transition: color 0.4s;
+}
+.sensor-value.updated { color: var(--green); }
+.sensor-unit { font-size: 18px; color: var(--text-dim); margin-left: 4px; }
+.sensor-time {
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  margin-top: 10px; display: flex; align-items: center; gap: 6px;
+}
+
+/* Control Widget */
+.control-body { display: flex; align-items: center; justify-content: space-between; }
+.control-state { font-family: var(--mono); font-size: 24px; font-weight: 300; color: var(--text-dim); }
+.control-state.on { color: var(--green); }
+.control-label { font-size: 11px; font-family: var(--mono); color: var(--text-dim); margin-top: 4px; }
+
+.toggle-switch { position: relative; width: 58px; height: 30px; cursor: pointer; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 30px; transition: all 0.3s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--text-dim); top: 3px; left: 3px; transition: all 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: rgba(0,255,136,0.12); border-color: var(--green); }
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(28px); background: var(--green); box-shadow: 0 0 10px rgba(0,255,136,0.5);
+}
+
+/* Chart Widget */
+.chart-container { position: relative; height: 160px; margin-top: 4px; }
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(10px);
+  z-index: 200; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; padding: 32px; width: 100%; max-width: 440px;
+  transform: translateY(16px); transition: transform 0.25s;
+  box-shadow: var(--shadow);
+}
+.modal-overlay.open .modal { transform: translateY(0); }
+
+.modal-title {
+  font-size: 20px; font-weight: 800; color: var(--text-bright);
+  margin-bottom: 22px; display: flex; align-items: center; gap: 10px;
+}
+
+.type-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
+
+.type-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 8px; cursor: pointer;
+  text-align: center; transition: all 0.2s; color: var(--text-dim);
+  font-family: var(--sans);
+}
+.type-btn:hover, .type-btn.active {
+  border-color: var(--cyan); color: var(--cyan);
+  background: rgba(0,212,255,0.05);
+}
+.type-btn .ti { font-size: 26px; display: block; margin-bottom: 6px; }
+.type-btn .tl { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
+
+.modal-footer { display: flex; gap: 10px; margin-top: 22px; }
+
+.btn-modal {
+  flex: 1; padding: 12px; border-radius: 8px; font-weight: 700;
+  font-size: 14px; cursor: pointer; border: 1px solid var(--border);
+  font-family: var(--sans); transition: all 0.2s;
+}
+.btn-cancel { background: transparent; color: var(--text-dim); }
+.btn-cancel:hover { border-color: var(--border-hover); color: var(--text); }
+.btn-create { background: var(--cyan); color: #000; border-color: var(--cyan); }
+.btn-create:hover { background: #33ddff; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 13px 18px;
+  font-size: 13px; font-family: var(--mono); color: var(--text);
+  z-index: 300; transform: translateY(80px); opacity: 0;
+  transition: all 0.3s; max-width: 280px;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { border-color: rgba(0,255,136,0.3); }
+.toast.error   { border-color: rgba(255,68,85,0.3); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN PAGE ===== -->
+<div id="login-page">
+  <div class="login-glow"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">⚡</div>
+      <div class="login-logo-text">IOT<span>India</span></div>
+    </div>
+    <div class="login-title" id="auth-title">Welcome back</div>
+    <div class="login-sub" id="auth-sub">→ Sign in to your control center</div>
+
+    <div class="login-error" id="auth-error"></div>
+
+    <div class="form-group" id="name-group" style="display:none">
+      <label class="form-label">Full Name</label>
+      <input class="form-input" type="text" id="inp-name" placeholder="Your name">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" type="email" id="inp-email" placeholder="you@example.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-input" type="password" id="inp-pass" placeholder="••••••••">
+    </div>
+
+    <button class="btn btn-primary" id="btn-auth" onclick="handleAuth()">Sign In →</button>
+
+    <div class="login-divider">or</div>
+    <button class="btn btn-google" onclick="handleGoogle()">
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+        <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
+        <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
+        <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <div class="login-toggle">
+      <span id="tog-txt">Don't have an account?</span>
+      <a onclick="toggleMode()"> <span id="tog-lnk">Sign up</span></a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD PAGE ===== -->
+<div id="dashboard-page">
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-logo-icon">⚡</div>
+      IOT<span>India</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="status-pill">
+      <div class="status-dot" id="mqtt-dot"></div>
+      <span id="mqtt-label">MQTT</span>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot online"></div>
+      <span>Supabase ✓</span>
+    </div>
+    <div class="topbar-user" id="user-label"></div>
+    <button class="btn-sm btn-add" onclick="openModal()">+ Add Widget</button>
+    <button class="btn-sm" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="dashboard-grid" id="grid">
+    <div class="empty-state" id="empty">
+      <div class="empty-icon">📡</div>
+      <div class="empty-text">No widgets yet</div>
+      <div class="empty-sub">Click "+ Add Widget" to build your dashboard</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADD WIDGET MODAL ===== -->
+<div class="modal-overlay" id="modal" onclick="bgClose(event)">
+  <div class="modal">
+    <div class="modal-title">📦 Add Widget</div>
+
+    <div class="type-grid">
+      <div class="type-btn active" onclick="pickType('sensor',this)">
+        <span class="ti">📊</span><span class="tl">Sensor</span>
+      </div>
+      <div class="type-btn" onclick="pickType('control',this)">
+        <span class="ti">💡</span><span class="tl">Control</span>
+      </div>
+      <div class="type-btn" onclick="pickType('chart',this)">
+        <span class="ti">📈</span><span class="tl">Chart</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Widget Name</label>
+      <input class="form-input" type="text" id="w-name" placeholder="e.g. Temperature, LED 1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">MQTT Topic</label>
+      <input class="form-input" type="text" id="w-topic" placeholder="e.g. home/sensor/temp">
+    </div>
+    <div class="form-group" id="unit-row">
+      <label class="form-label">Unit (optional)</label>
+      <input class="form-input" type="text" id="w-unit" placeholder="e.g. °C, %, V, lux">
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-modal btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal btn-create" onclick="createWidget()">Add Widget →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// ★  FILL IN YOUR OWN VALUES BELOW  ★
+// ═══════════════════════════════════════════════
+const CFG = {
+  SUPABASE_URL  : 'https://mcsoykojqkmvtyknxvkv.supabase.co',
+  SUPABASE_KEY  : 'YOUR_PUBLISHABLE_KEY_HERE',       // ← paste your sb_publishable_... key
+  MQTT_HOST     : '7eff843b87f44e7abb89980edf4d4f4d.s1.eu.hivemq.cloud',
+  MQTT_PORT     : 8884,
+  MQTT_USER     : 'ESP32_vik_1409',
+  MQTT_PASS     : 'YOUR_MQTT_PASSWORD_HERE',         // ← paste your HiveMQ password
+};
+// ═══════════════════════════════════════════════
+
+const sb      = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
+let mqttClient  = null;
+let widgets     = [];
+let currentUser = null;
+let isSignUp    = false;
+let selType     = 'sensor';
+let charts      = {};
+
+// ── Auth state ───────────────────────────────
+sb.auth.onAuthStateChange(async (_e, session) => {
+  if (session?.user) {
+    currentUser = session.user;
+    document.getElementById('user-label').textContent = currentUser.email;
+    show('dashboard-page'); hide('login-page');
+    await loadWidgets();
+    connectMQTT();
+  } else {
+    currentUser = null;
+    show('login-page'); hide('dashboard-page');
+  }
+});
+
+function show(id){ document.getElementById(id).style.display = id==='login-page'?'flex':'block'; }
+function hide(id){ document.getElementById(id).style.display = 'none'; }
+
+// ── Auth actions ─────────────────────────────
+function toggleMode(){
+  isSignUp = !isSignUp;
+  document.getElementById('auth-title').textContent  = isSignUp ? 'Create account' : 'Welcome back';
+  document.getElementById('auth-sub').textContent    = isSignUp ? '→ Join IOT India platform' : '→ Sign in to your control center';
+  document.getElementById('btn-auth').textContent    = isSignUp ? 'Create Account →' : 'Sign In →';
+  document.getElementById('tog-txt').textContent     = isSignUp ? 'Already have an account?' : "Don't have an account?";
+  document.getElementById('tog-lnk').textContent     = isSignUp ? 'Sign in' : 'Sign up';
+  document.getElementById('name-group').style.display= isSignUp ? 'block' : 'none';
+  document.getElementById('auth-error').style.display= 'none';
+}
+
+async function handleAuth(){
+  const email = document.getElementById('inp-email').value.trim();
+  const pass  = document.getElementById('inp-pass').value;
+  const btn   = document.getElementById('btn-auth');
+  if(!email||!pass){ showError('Please fill in all fields'); return; }
+  btn.textContent = 'Loading...'; btn.disabled = true;
+  let res;
+  if(isSignUp){
+    res = await sb.auth.signUp({ email, password: pass });
+    if(!res.error && res.data.user){
+      const name = document.getElementById('inp-name').value.trim();
+      await sb.from('profiles').insert({ user_id: res.data.user.id, full_name: name });
+    }
+  } else {
+    res = await sb.auth.signInWithPassword({ email, password: pass });
+  }
+  if(res.error){ showError(res.error.message); btn.textContent = isSignUp?'Create Account →':'Sign In →'; btn.disabled=false; }
+}
+
+async function handleGoogle(){
+  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href } });
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  if(mqttClient) mqttClient.end();
+  mqttClient = null; widgets = []; charts = {};
+  document.getElementById('grid').innerHTML =
+    '<div class="empty-state" id="empty"><div class="empty-icon">📡</div><div class="empty-text">No widgets yet</div><div class="empty-sub">Click "+ Add Widget" to build your dashboard</div></div>';
+}
+
+function showError(msg){
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+// ── MQTT ─────────────────────────────────────
+function connectMQTT(){
+  const url = `wss://${CFG.MQTT_HOST}:${CFG.MQTT_PORT}/mqtt`;
+  mqttClient = mqtt.connect(url,{
+    username: CFG.MQTT_USER, password: CFG.MQTT_PASS,
+    clientId: 'dash_' + Math.random().toString(16).slice(2),
+    reconnectPeriod: 4000,
+  });
+  mqttClient.on('connect', ()=>{
+    setMQTT('online','Connected');
+    widgets.forEach(w => mqttClient.subscribe(w.topic));
+  });
+  mqttClient.on('close',   ()=> setMQTT('offline','Disconnected'));
+  mqttClient.on('error',   ()=> setMQTT('offline','Error'));
+  mqttClient.on('message', (topic, msg)=> onMessage(topic, msg.toString()));
+}
+
+function setMQTT(cls, label){
+  document.getElementById('mqtt-dot').className   = 'status-dot ' + cls;
+  document.getElementById('mqtt-label').textContent = 'MQTT ' + label;
+}
+
+function onMessage(topic, value){
+  widgets.filter(w => w.topic === topic).forEach(w =>{
+    refreshWidget(w.id, value);
+    saveToDB(w, value);
+  });
+}
+
+async function publish(topic, value){
+  if(mqttClient?.connected){
+    mqttClient.publish(topic, value.toString());
+    await sb.from('device_data').insert({ user_id:currentUser.id, topic, value:value.toString(), direction:'outgoing' });
+  } else { toast('MQTT not connected','error'); }
+}
+
+async function saveToDB(w, value){
+  if(!currentUser) return;
+  await sb.from('device_data').insert({
+    user_id: currentUser.id,
+    topic: w.topic,
+    value: value,
+    direction: 'incoming'
+  });
+}
+
+// ── Widgets ───────────────────────────────────
+async function loadWidgets(){
+  if(!currentUser) return;
+  const { data } = await sb.from('dashboards').select('*')
+    .eq('user_id', currentUser.id).order('created_at',{ascending:true});
+  if(data?.length) data.forEach(row =>{
+    const lay = typeof row.layout === 'string' ? JSON.parse(row.layout) : row.layout;
+    addToDOM({...lay, id: row.id});
+  });
+}
+
+function openModal(){
+  document.getElementById('modal').classList.add('open');
+  ['w-name','w-topic','w-unit'].forEach(id => document.getElementById(id).value='');
+  selType = 'sensor';
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.type-btn')[0].classList.add('active');
+  document.getElementById('unit-row').style.display = 'block';
+}
+function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+function bgClose(e){ if(e.target.id==='modal') closeModal(); }
+
+function pickType(type, el){
+  selType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('unit-row').style.display = type==='sensor' ? 'block' : 'none';
+}
+
+async function createWidget(){
+  const name  = document.getElementById('w-name').value.trim();
+  const topic = document.getElementById('w-topic').value.trim();
+  const unit  = document.getElementById('w-unit').value.trim();
+  if(!name||!topic){ toast('Please fill in name and topic','error'); return; }
+
+  const payload = { type:selType, name, topic, unit };
+  const { data, error } = await sb.from('dashboards').insert({
+    user_id: currentUser.id, name, layout: JSON.stringify(payload)
+  }).select().single();
+  if(error){ toast('Failed to save','error'); return; }
+
+  addToDOM({...payload, id: data.id});
+  if(mqttClient?.connected) mqttClient.subscribe(topic);
+  closeModal();
+  toast('Widget added! ✓');
+}
+
+function addToDOM(w){
+  widgets.push(w);
+  const empty = document.getElementById('empty');
+  if(empty) empty.remove();
+
+  const card = document.createElement('div');
+  card.className = 'widget-card';
+  card.id = 'wc-' + w.id;
+  card.innerHTML = buildHTML(w);
+  document.getElementById('grid').appendChild(card);
+
+  if(w.type === 'chart') initChart(w);
+}
+
+function buildHTML(w){
+  const icons = { sensor:'📊', control:'💡', chart:'📈' };
+  let body = '';
+
+  if(w.type === 'sensor'){
+    body = `
+      <div class="sensor-value" id="sv-${w.id}">--<span class="sensor-unit">${w.unit||''}</span></div>
+      <div class="sensor-time">
+        <div class="status-dot" id="sd-${w.id}"></div>
+        <span id="st-${w.id}">Waiting for data…</span>
+      </div>`;
+  } else if(w.type === 'control'){
+    body = `
+      <div class="control-body">
+        <div>
+          <div class="control-state" id="cs-${w.id}">OFF</div>
+          <div class="control-label">Topic: ${w.topic}</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="tg-${w.id}" onchange="toggle('${w.id}','${w.topic}',this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>`;
+  } else if(w.type === 'chart'){
+    body = `<div class="chart-container"><canvas id="ch-${w.id}"></canvas></div>`;
+  }
+
+  return `
+    <div class="widget-header">
+      <div class="widget-icon ${w.type}">${icons[w.type]}</div>
+      <div class="widget-meta">
+        <div class="widget-title">${w.name}</div>
+        <div class="widget-topic">${w.topic}</div>
+      </div>
+      <div class="widget-actions">
+        <button class="widget-btn" title="Delete" onclick="deleteWidget('${w.id}')">✕</button>
+      </div>
+    </div>
+    ${body}`;
+}
+
+function refreshWidget(id, value){
+  const w = widgets.find(x => x.id == id);
+  if(!w) return;
+
+  if(w.type === 'sensor'){
+    const el = document.getElementById('sv-'+id);
+    const sd = document.getElementById('sd-'+id);
+    const st = document.getElementById('st-'+id);
+    if(el){ el.innerHTML = `${value}<span class="sensor-unit">${w.unit||''}</span>`; el.classList.add('updated'); setTimeout(()=>el.classList.remove('updated'),900); }
+    if(sd) sd.className = 'status-dot online';
+    if(st) st.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    updateChart(id, value);
+  } else if(w.type === 'control'){
+    const tg = document.getElementById('tg-'+id);
+    const cs = document.getElementById('cs-'+id);
+    const on = (value==='1'||value.toLowerCase()==='on'||value.toLowerCase()==='true');
+    if(tg) tg.checked = on;
+    if(cs){ cs.textContent = on?'ON':'OFF'; cs.className = 'control-state'+(on?' on':''); }
+  } else if(w.type === 'chart'){
+    updateChart(id, value);
+  }
+}
+
+function toggle(id, topic, on){
+  const cs = document.getElementById('cs-'+id);
+  if(cs){ cs.textContent = on?'ON':'OFF'; cs.className = 'control-state'+(on?' on':''); }
+  publish(topic, on?'1':'0');
+}
+
+async function deleteWidget(id){
+  if(!confirm('Delete this widget?')) return;
+  await sb.from('dashboards').delete().eq('id', id);
+  const card = document.getElementById('wc-'+id);
+  if(card) card.remove();
+  widgets = widgets.filter(w => w.id != id);
+  if(charts[id]){ charts[id].destroy(); delete charts[id]; }
+  if(widgets.length === 0){
+    document.getElementById('grid').innerHTML =
+      '<div class="empty-state" id="empty"><div class="empty-icon">📡</div><div class="empty-text">No widgets yet</div><div class="empty-sub">Click "+ Add Widget" to build your dashboard</div></div>';
+  }
+  toast('Widget deleted');
+}
+
+// ── Charts ────────────────────────────────────
+function initChart(w){
+  setTimeout(()=>{
+    const canvas = document.getElementById('ch-'+w.id);
+    if(!canvas) return;
+    charts[w.id] = new Chart(canvas,{
+      type:'line',
+      data:{
+        labels:[],
+        datasets:[{
+          label: w.name, data:[],
+          borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.04)',
+          borderWidth:2, pointRadius:3, pointBackgroundColor:'#00d4ff',
+          tension:0.4, fill:true
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ ticks:{ color:'#6a7f96', font:{ family:'JetBrains Mono', size:9 }, maxRotation:0, maxTicksLimit:8 }, grid:{ color:'rgba(0,212,255,0.04)' } },
+          y:{ ticks:{ color:'#6a7f96', font:{ family:'JetBrains Mono', size:9 } }, grid:{ color:'rgba(0,212,255,0.04)' } }
+        }
+      }
+    });
+    loadHistory(w);
+  }, 120);
+}
+
+function updateChart(id, value){
+  const c = charts[id];
+  if(!c) return;
+  c.data.labels.push(new Date().toLocaleTimeString());
+  c.data.datasets[0].data.push(parseFloat(value));
+  if(c.data.labels.length > 25){ c.data.labels.shift(); c.data.datasets[0].data.shift(); }
+  c.update('none');
+}
+
+async function loadHistory(w){
+  const { data } = await sb.from('device_data').select('value,created_at')
+    .eq('user_id', currentUser.id).eq('topic', w.topic).eq('direction','incoming')
+    .order('created_at',{ascending:false}).limit(25);
+  if(data?.length && charts[w.id]){
+    const rev = data.reverse();
+    charts[w.id].data.labels   = rev.map(d => new Date(d.created_at).toLocaleTimeString());
+    charts[w.id].data.datasets[0].data = rev.map(d => parseFloat(d.value));
+    charts[w.id].update();
+  }
+}
+
+// ── Toast ────────────────────────────────────
+function toast(msg, type='success'){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast ${type} show`;
+  setTimeout(()=> el.className='toast', 3200);
+}
+</script>
+</body>
+</html>
